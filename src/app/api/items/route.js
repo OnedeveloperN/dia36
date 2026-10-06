@@ -2,42 +2,36 @@ import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import Item from '@/models/Item';
 
+// GET /api/items
 export async function GET() {
     try {
         await connectDB();
         const items = await Item.find({}).sort({ createdAt: -1 });
-        return NextResponse.json({ success: true, data: items });
+        return NextResponse.json(items);
     } catch (error) {
-        return NextResponse.json(
-            { success: false, error: 'Error al obtener los elementos de la base de datos' },
-            { status: 500 }
-        );
+        console.error('Error en GET /api/items:', error);
+        return NextResponse.json({ error: 'Error al obtener ítems' }, { status: 500 });
     }
 }
 
-export async function POST(req) {
+// POST /api/items
+export async function POST(request) {
     try {
-        await connectDB();
-        const body = await req.json();
+        const body = await request.json();
 
-        // Validación básica de entrada
         if (!body.title || body.title.trim() === '') {
-            return NextResponse.json(
-                { success: false, error: 'El campo título es obligatorio' },
-                { status: 400 }
-            );
+            return NextResponse.json({ error: 'El título es obligatorio' }, { status: 400 });
         }
 
+        await connectDB();
         const newItem = await Item.create({
             title: body.title,
             description: body.description || '',
         });
 
-        return NextResponse.json({ success: true, data: newItem }, { status: 201 });
+        return NextResponse.json(newItem, { status: 201 });
     } catch (error) {
-        return NextResponse.json(
-            { success: false, error: 'Error al crear el elemento' },
-            { status: 500 }
-        );
+        console.error('Error en POST /api/items:', error);
+        return NextResponse.json({ error: 'Error al crear ítem' }, { status: 500 });
     }
 }

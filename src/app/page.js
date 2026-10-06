@@ -4,34 +4,25 @@ import { useState, useEffect } from 'react';
 
 export default function HomePage() {
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [editingId, setEditingId] = useState(null);
-  const [editTitle, setEditTitle] = useState('');
-  const [editDescription, setEditDescription] = useState('');
 
-  // Feedback
-  const [message, setMessage] = useState({ text: '', type: '' });
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const showMessage = (text, type = 'success') => {
-    setMessage({ text, type });
-    setTimeout(() => setMessage({ text: '', type: '' }), 3500);
-  };
-
-  // GET: Cargar items
   const fetchItems = async () => {
-    setLoading(true);
     try {
+      setLoading(true);
       const res = await fetch('/api/items');
       const data = await res.json();
-      if (data.success) {
-        setItems(data.data);
-      } else {
-        showMessage(data.error, 'error');
-      }
+      if (!res.ok) throw new Error(data.error || 'Error al cargar ítems');
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      showMessage('Error de conexión al cargar elementos', 'error');
+      setError(err.message);
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -41,191 +32,179 @@ export default function HomePage() {
     fetchItems();
   }, []);
 
-  // POST: Crear item
-  const handleCreate = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    setError('');
+    setSuccess('');
+
+    if (!title.trim()) {
+      setError('El título no puede estar vacío');
+      return;
+    }
 
     try {
-      const res = await fetch('/api/items', {
-        method: 'POST',
+      setSubmitting(true);
+      const method = editingId ? 'PUT' : 'POST';
+      const url = editingId ? `/api/items/${editingId}` : '/api/items';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, description }),
       });
-      const data = await res.json();
 
-      if (data.success) {
-        setTitle('');
-        setDescription('');
-        showMessage('¡Elemento guardado con éxito!');
-        fetchItems();
-      } else {
-        showMessage(data.error, 'error');
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ocurrió un error');
+
+      setSuccess(editingId ? '¡Ítem actualizado!' : '¡Ítem creado exitosamente!');
+      setTitle('');
+      setDescription('');
+      setEditingId(null);
+      fetchItems();
     } catch (err) {
-      showMessage('Error al enviar los datos', 'error');
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  // PUT: Actualizar item
-  const handleUpdate = async (id) => {
-    if (!editTitle.trim()) return;
-
-    try {
-      const res = await fetch(`/api/items/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: editTitle, description: editDescription }),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        setEditingId(null);
-        showMessage('Elemento actualizado correctamente');
-        fetchItems();
-      } else {
-        showMessage(data.error, 'error');
-      }
-    } catch (err) {
-      showMessage('Error al actualizar el elemento', 'error');
-    }
+  const handleEdit = (item) => {
+    setEditingId(item._id);
+    setTitle(item.title);
+    setDescription(item.description || '');
+    setError('');
+    setSuccess('');
   };
 
-  // DELETE: Eliminar item
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setTitle('');
+    setDescription('');
+  };
+
   const handleDelete = async (id) => {
-    try {
-      const res = await fetch(`/api/items/${id}`, {
-        method: 'DELETE',
-      });
-      const data = await res.json();
+    if (!confirm('¿Seguro que querés eliminar este ítem?')) return;
+    setError('');
+    setSuccess('');
 
-      if (data.success) {
-        showMessage('Elemento eliminado');
-        fetchItems();
-      } else {
-        showMessage(data.error, 'error');
-      }
+    try {
+      const res = await fetch(`/api/items/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al eliminar');
+
+      setSuccess('Ítem eliminado correctamente');
+      fetchItems();
     } catch (err) {
-      showMessage('Error al eliminar el elemento', 'error');
+      setError(err.message);
     }
   };
 
   return (
     <main className="max-w-3xl mx-auto p-6 space-y-8">
-      <header className="border-b border-slate-800 pb-4">
-        <h1 className="text-3xl font-bold text-slate-100">Día 36: App CRUD con Next.js & MongoDB</h1>
-        <p className="text-slate-400 mt-1">Gestión de items persistentes en MongoDB Atlas</p>
+      {/* Encabezado */}
+      <header className="border-b border-slate-200 pb-4">
+        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+          Día 36: App CRUD con Next.js & MongoDB
+        </h1>
+        <p className="text-indigo-600 font-medium text-sm mt-1">
+          Gestión de items persistentes en MongoDB Atlas
+        </p>
       </header>
 
-      {/* Mensajes de feedback */}
-      {message.text && (
-        <div
-          className={`p-4 rounded-lg text-sm border ${message.type === 'error'
-              ? 'bg-rose-950 border-rose-800 text-rose-300'
-              : 'bg-emerald-950 border-emerald-800 text-emerald-300'
-            }`}
-        >
-          {message.text}
-        </div>
-      )}
+      {/* Alertas */}
+      {error && <div className="p-3.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-medium">{error}</div>}
+      {success && <div className="p-3.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-sm font-medium">{success}</div>}
 
-      {/* Formulario de Creación */}
-      <form onSubmit={handleCreate} className="p-4 bg-slate-900 border border-slate-800 rounded-lg space-y-4">
-        <h2 className="text-lg font-semibold text-slate-200">Añadir Nuevo Elemento</h2>
-        <div className="space-y-2">
+      {/* Formulario con Fondo Blanco Forzado */}
+      <form
+        onSubmit={handleSubmit}
+        style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+        className="p-6 rounded-2xl border border-slate-300 shadow-sm space-y-4"
+      >
+        <h2 className="text-lg font-bold text-slate-900">
+          {editingId ? 'Editar Elemento' : 'Añadir Nuevo Elemento'}
+        </h2>
+
+        <div>
           <input
             type="text"
-            placeholder="Título (obligatorio)"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-cyan-500 text-slate-100"
-          />
-          <input
-            type="text"
-            placeholder="Descripción (opcional)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-cyan-500 text-slate-100"
+            style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+            className="w-full px-3.5 py-2.5 border border-slate-300 placeholder-slate-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+            placeholder="Título (obligatorio)"
           />
         </div>
-        <button
-          type="submit"
-          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors"
-        >
-          Guardar
-        </button>
+
+        <div>
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+            className="w-full px-3.5 py-2.5 border border-slate-300 placeholder-slate-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+            placeholder="Descripción (opcional)"
+          />
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button
+            type="submit"
+            disabled={submitting}
+            style={{ backgroundColor: '#4f46e5', color: '#ffffff' }}
+            className="font-semibold px-5 py-2.5 rounded-xl shadow-sm transition-all text-sm disabled:opacity-50"
+          >
+            {submitting ? 'Guardando...' : editingId ? 'Actualizar' : 'Guardar'}
+          </button>
+
+          {editingId && (
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              style={{ backgroundColor: '#f1f5f9', color: '#334155' }}
+              className="font-semibold px-4 py-2.5 rounded-xl transition-all text-sm"
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
       </form>
 
-      {/* Listado de Items */}
+      {/* Lista de Elementos */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-200">Lista de Elementos</h2>
+        <h2 className="text-lg font-bold text-slate-900">Lista de Elementos</h2>
 
         {loading ? (
-          <p className="text-cyan-400 font-mono animate-pulse">Cargando elementos desde MongoDB...</p>
-        ) : items.length === 0 ? (
-          <p className="text-slate-500">No hay elementos registrados en la base de datos.</p>
+          <p className="text-slate-500 text-sm">Cargando elementos...</p>
+        ) : !Array.isArray(items) || items.length === 0 ? (
+          <p className="text-slate-500 text-sm">No hay elementos registrados en la base de datos.</p>
         ) : (
           <div className="space-y-3">
-            {items.map((item) => (
-              <div key={item._id} className="p-4 bg-slate-900 border border-slate-800 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
-                {editingId === item._id ? (
-                  <div className="flex-1 space-y-2">
-                    <input
-                      type="text"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      className="w-full px-3 py-1 bg-slate-800 border border-cyan-500 rounded text-slate-100"
-                    />
-                    <input
-                      type="text"
-                      value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      className="w-full px-3 py-1 bg-slate-800 border border-slate-700 rounded text-slate-300 text-sm"
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <h3 className="font-semibold text-slate-100">{item.title}</h3>
-                    {item.description && <p className="text-sm text-slate-400">{item.description}</p>}
-                  </div>
-                )}
-
+            {Array.isArray(items) && items.map((item) => (
+              <div
+                key={item._id}
+                style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+                className="p-4 rounded-xl border border-slate-300 shadow-sm flex items-center justify-between gap-4"
+              >
+                <div>
+                  <h3 className="font-semibold text-slate-900">{item.title}</h3>
+                  {item.description && <p className="text-sm text-slate-600 mt-0.5">{item.description}</p>}
+                </div>
                 <div className="flex gap-2">
-                  {editingId === item._id ? (
-                    <>
-                      <button
-                        onClick={() => handleUpdate(item._id)}
-                        className="px-3 py-1 bg-cyan-600 text-white text-sm rounded hover:bg-cyan-500"
-                      >
-                        Guardar
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className="px-3 py-1 bg-slate-700 text-white text-sm rounded hover:bg-slate-600"
-                      >
-                        Cancelar
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => {
-                          setEditingId(item._id);
-                          setEditTitle(item.title);
-                          setEditDescription(item.description || '');
-                        }}
-                        className="px-3 py-1 bg-slate-800 text-amber-400 border border-amber-500/30 text-sm rounded hover:bg-amber-950"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item._id)}
-                        className="px-3 py-1 bg-slate-800 text-rose-400 border border-rose-500/30 text-sm rounded hover:bg-rose-950"
-                      >
-                        Eliminar
-                      </button>
-                    </>
-                  )}
+                  <button
+                    onClick={() => handleEdit(item)}
+                    style={{ backgroundColor: '#e0e7ff', color: '#3730a3' }}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors border border-indigo-200"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item._id)}
+                    style={{ backgroundColor: '#ffe4e6', color: '#9f1239' }}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors border border-rose-200"
+                  >
+                    Eliminar
+                  </button>
                 </div>
               </div>
             ))}
